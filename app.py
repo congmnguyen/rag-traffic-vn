@@ -20,7 +20,7 @@ from serpapi import GoogleSearch
 
 client = ChatOpenAI(
     openai_api_base="https://openrouter.ai/api/v1",
-    openai_api_key="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",
+    openai_api_key=os.getenv("OPENROUTER_API_KEY"),
     model_name="meta-llama/llama-3.3-70b-instruct:free",
 )
 
@@ -68,7 +68,7 @@ class WebSearcher:
         self.google_api_key = os.getenv("GOOGLE_API_KEY") 
         self.llm_response = ChatOpenAI(
             openai_api_base="https://openrouter.ai/api/v1",
-            openai_api_key="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",
+            openai_api_key=os.getenv("OPENROUTER_API_KEY"),
             model_name="meta-llama/llama-3.3-70b-instruct:free",
         )
     
@@ -160,7 +160,7 @@ class VectorRetriever:
         """
         llm_rewriting = ChatOpenAI(
             openai_api_base="https://openrouter.ai/api/v1",
-            openai_api_key="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",
+            openai_api_key=os.getenv("OPENROUTER_API_KEY"),
             model_name="meta-llama/llama-3.3-70b-instruct:free",
         )
         prompt = ChatPromptTemplate.from_template(multi_prompt)
@@ -288,7 +288,7 @@ async def search(query_request: QueryRequest):
 
     llm_response = ChatOpenAI(
         openai_api_base="https://openrouter.ai/api/v1",
-        openai_api_key="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",
+        openai_api_key=os.getenv("OPENROUTER_API_KEY"),
         model_name="meta-llama/llama-3.3-70b-instruct:free",
     )
 
