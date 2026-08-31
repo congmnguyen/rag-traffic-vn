@@ -1,69 +1,121 @@
-# Hệ thống RAG cho luật giao thông Việt Nam
+# RAG Traffic VN
 
-Hệ thống RAG (Retrieval-Augmented Generation) trả lời câu hỏi về luật giao thông Việt Nam. Câu hỏi được một LLM router phân làm 3 nhánh — `retrieval` (tra FAISS trên kho thông tư đã index), `search` (tìm web trực tiếp qua SerpAPI, ưu tiên nguồn `.gov.vn` / thuvienphapluat.vn), hoặc `conversation` (hội thoại thường) — sau đó tổng hợp câu trả lời có trích dẫn điều luật.
+Baseline RAG có thể tái lập để tra cứu văn bản pháp luật giao thông Việt Nam. Hệ thống trích xuất PDF/DOC/DOCX, chia theo điều, tạo embedding bằng `intfloat/multilingual-e5-small`, tìm cosine bằng FAISS và trả nguồn theo từng đoạn.
 
-## Demo giao diện
+> Dữ liệu hiện được phục hồi từ bản lưu tháng 3/2025. Chưa có kiểm kê đầy đủ tình trạng hiệu lực, văn bản sửa đổi hoặc bãi bỏ. Kết quả chỉ dùng để tra cứu và phải được đối chiếu với nguồn pháp luật chính thức.
 
-![Giao diện ứng dụng trả lời câu hỏi luật giao thông](images/ui-demo.jpg)
+Kiểm tra nội bộ hiện không tìm thấy `168/2024/NĐ-CP` hoặc `36/2024/QH15` trong corpus. Đây là khoảng trống dữ liệu đã biết, không phải lỗi retrieval.
 
-## Cấu trúc dự án
+## Những gì đã thay đổi so với prototype
 
+- Dữ liệu nguồn, index sinh ra và archive được tách khỏi mã nguồn, đồng thời bị Git bỏ qua.
+- Mỗi chunk có ID và SHA-256 duy nhất; bản trùng chính xác được loại khi ingest.
+- File có tên “Dự thảo” bị loại khỏi index mặc định và được ghi vào báo cáo ingestion.
+- FAISS dùng cosine đúng cách: embedding được chuẩn hóa rồi tìm bằng `IndexFlatIP`.
+- `manifest.json` lưu model, chiều vector, số chunk và hash metadata. API từ chối nạp index bị lệch.
+- API vẫn khởi động và báo `/health` rõ ràng nếu chưa tạo index.
+- Lịch sử được tách theo `session_id`, có giới hạn bộ nhớ thay vì dùng một biến toàn cục cho mọi người.
+- Không có API key trong code. Khi chưa cấu hình LLM, hệ thống chạy ở chế độ `evidence_only`.
+- Frontend hiển thị nguồn có cấu trúc và không render HTML do LLM sinh ra.
+
+## Cấu trúc
+
+```text
+rag_traffic/                 # ingestion, indexing, retrieval và generation
+tests/                       # unit tests offline
+static/index.html            # giao diện
+data/raw/Thongtu/            # dữ liệu đã giải nén (không commit)
+data/index/                  # chunks + FAISS + manifest (có thể tái tạo)
+data/legacy/                 # metadata/index cũ để đối chiếu
+data/archives/               # ZIP gốc; có chứa secret lịch sử, không commit
+metadata.py                  # CLI ingestion
+embeddings.py                # CLI tạo index
+retrieval.py                 # CLI tìm kiếm
+app.py                       # FastAPI
 ```
-.
-├── metadata.py      # Trích xuất văn bản từ PDF/DOCX thông tư (tự OCR nếu là PDF scan) → metadata.json
-├── embeddings.py    # (Tuỳ chọn) Tạo embeddings bằng model tự chọn và build FAISS index
-├── retrieval.py     # Chatbot CLI: router 3 nhánh + FAISS retrieval + web search + lọc similarity
-├── app.py           # API server (FastAPI): POST /search, POST /clear_history
-└── requirements.txt
-```
-
-Ghi chú kiến trúc:
-
-- **Router 3 nhánh**: một LLM nhỏ (`gemma-3-4b` qua OpenRouter) quyết định câu hỏi đi nhánh nào; câu trả lời cuối tổng hợp bằng `llama-3.3-70b`.
-- **Retrieval**: query được viết lại (tách đa ý thành nhiều truy vấn), tìm trên FAISS (`distiluse-base-multilingual-cased-v2`), rồi lọc lại bằng cosine similarity theo ngưỡng trước khi đưa vào prompt.
-- **OCR fallback**: `metadata.py` tự phát hiện PDF không có text layer và chuyển sang OCR (Tesseract, gói tiếng Việt).
 
 ## Cài đặt
 
-### 1. Thư viện Python
+Khuyến nghị `uv` và PyTorch CPU để tránh tải các gói CUDA không cần thiết:
 
 ```bash
-pip install -r requirements.txt
+make install
 ```
 
-### 2. Poppler + Tesseract (xử lý PDF scan)
+Hoặc thực hiện thủ công:
 
-**Ubuntu/Debian:**
+```bash
+uv venv --python 3.14 .venv
+uv pip install --python .venv/bin/python torch \
+  --index-url https://download.pytorch.org/whl/cpu
+uv pip install --python .venv/bin/python -r requirements.txt
+```
+
+Để OCR PDF scan trên Ubuntu/Debian:
+
 ```bash
 sudo apt-get install poppler-utils tesseract-ocr tesseract-ocr-vie
 ```
 
-**Windows:**
-Tải Tesseract tại https://github.com/UB-Mannheim/tesseract/wiki, cài gói tiếng Việt và thêm đường dẫn vào PATH.
+Nếu chưa có Tesseract, ingestion vẫn hoàn tất các tài liệu đọc được và ghi danh sách lỗi vào `data/index/ingestion-report.json`.
 
-### 3. API keys
+Khi không có quyền `sudo`, pipeline cũng tự nhận bản cài user-local tại `~/.local/opt/tesseract`. Có thể đổi vị trí bằng `RAG_TESSERACT_ROOT` hoặc trỏ thẳng binary qua `RAG_TESSERACT_CMD`.
 
-Đặt biến môi trường trước khi chạy (không hard-code key vào code):
-
-```bash
-export OPENROUTER_API_KEY=...   # LLM qua openrouter.ai
-export GOOGLE_API_KEY=...       # SerpAPI cho nhánh web search
-```
-
-## Sử dụng
+## Tạo dữ liệu và index
 
 ```bash
-# 1. Trích metadata từ thư mục văn bản thông tư (PDF/DOCX)
-python metadata.py
-
-# 2. Chạy chatbot CLI (tự build FAISS index ở lần chạy đầu)
-python retrieval.py
-
-# hoặc chạy API server tại http://localhost:8000
-python app.py
+make ingest
+make index
 ```
 
-## Chú ý
+Các file được sinh:
 
-- Embeddings mặc định dùng `distiluse-base-multilingual-cased-v2`; `embeddings.py` chỉ cần khi muốn thay model embedding khác.
-- Chất lượng OCR phụ thuộc chất lượng bản scan; với văn bản mới nên dùng PDF dạng searchable.
+```text
+data/index/chunks.jsonl
+data/index/ingestion-report.json
+data/index/faiss.index
+data/index/manifest.json
+```
+
+[Model card E5](https://huggingface.co/intfloat/multilingual-e5-small) yêu cầu prefix `passage:` và `query:` cho tác vụ retrieval, kể cả với ngôn ngữ không phải tiếng Anh. Pipeline tự thêm đúng hai prefix này. FAISS dùng `IndexFlatIP` trên vector đã chuẩn hóa để inner product tương đương cosine, theo [tài liệu FAISS](https://github.com/facebookresearch/faiss/wiki/Faiss-indexes).
+
+## Chạy
+
+Tìm thử trên CLI:
+
+```bash
+.venv/bin/python retrieval.py "Quy định về tốc độ tối đa của xe máy?"
+```
+
+Chạy web/API:
+
+```bash
+make serve
+```
+
+Mở `http://127.0.0.1:8000`. Kiểm tra trạng thái tại `GET /health` và OpenAPI tại `/docs`.
+
+### Bật phần sinh câu trả lời
+
+Sao chép `.env.example` thành `.env`, sau đó điền cả hai biến:
+
+```dotenv
+OPENROUTER_API_KEY=...
+OPENROUTER_MODEL=...
+```
+
+Không có hai biến này, endpoint `/search` vẫn hoạt động nhưng chỉ trả các đoạn bằng chứng. Tên model không được hard-code vì model trên gateway có thể thay đổi theo thời gian.
+
+## Kiểm thử
+
+```bash
+make test
+```
+
+Unit tests không cần gọi LLM. Trước khi dùng thực tế cần bổ sung một bộ câu hỏi–đáp án chuẩn có điều khoản làm căn cứ, rồi đo ít nhất Recall@k, MRR và độ chính xác trích dẫn.
+
+## An toàn dữ liệu
+
+- Không commit `data/`, ZIP hoặc `.env` lên repository công khai.
+- Archive `src-*.zip` được phục hồi có chứa một OpenRouter key lịch sử. Key đó phải được thu hồi và không được giải nén source code vào repository.
+- Kho hiện có cả dự thảo và nhiều bản PDF/DOCX của cùng văn bản. Chưa được phép suy luận hiệu lực chỉ từ ngày hoặc tên file.

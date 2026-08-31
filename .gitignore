@@ -42,6 +42,8 @@ nosetests.xml
 coverage.xml
 *.cover
 .hypothesis/
+.pytest_cache/
+.ruff_cache/
 
 # Jupyter Notebook
 .ipynb_checkpoints
@@ -61,14 +63,24 @@ venv.bak/
 # PyCharm
 .idea/
 
-# Data files (nếu cần thiết)
-# Uncomment nếu bạn không muốn đẩy các file này lên GitHub
-# faiss_index.bin
-# metadata.json
-# segment_ids.json
+# Local configuration and recovered/source data.  The recovered archives include
+# a historical API key, and the legal corpus may have separate redistribution
+# terms, so none of these files should be pushed to a public repository.
+.env
+*.zip
+data/archives/
+data/raw/
+data/corpus/
+data/legacy/
 
-# Thư mục dữ liệu thực tế
+# Reproducible generated artifacts. Build them with `python embeddings.py`.
+data/index/
+
+# Backward-compatible locations used by the original prototype.
 Thongtu/
+faiss_index.bin
+metadata.json
+segment_ids.json
 
 # Log files
 *.log

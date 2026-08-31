@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tra cứu pháp luật giao thông</title>
+  <style>
+    :root { color-scheme: light; --ink:#172033; --muted:#64748b; --line:#dbe3ee; --brand:#14532d; --paper:#fff; --bg:#f3f6f4; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.55 system-ui,-apple-system,sans-serif; }
+    main { width:min(960px, calc(100% - 32px)); margin:48px auto; }
+    header { margin-bottom:24px; }
+    h1 { margin:0 0 6px; font-size:clamp(26px,5vw,40px); letter-spacing:-.03em; }
+    .subtitle,.meta,.notice { color:var(--muted); }
+    form { display:flex; gap:10px; padding:12px; background:var(--paper); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 35px #1720330d; }
+    input { flex:1; min-width:0; border:0; outline:0; padding:10px; font:inherit; }
+    button { border:0; border-radius:10px; padding:10px 16px; background:var(--brand); color:white; font-weight:650; cursor:pointer; }
+    button.secondary { background:#e6eee8; color:var(--brand); }
+    button:disabled { opacity:.55; cursor:wait; }
+    #status { min-height:28px; margin:12px 4px; color:var(--muted); }
+    article { background:var(--paper); border:1px solid var(--line); border-radius:16px; padding:20px; margin-top:14px; }
+    h2 { margin:0 0 12px; font-size:19px; }
+    #answer { white-space:pre-wrap; }
+    .source { border-top:1px solid var(--line); padding:16px 0; }
+    .source:first-of-type { border-top:0; padding-top:0; }
+    .score { display:inline-block; margin-left:8px; color:var(--brand); font-size:13px; font-weight:700; }
+    .content { margin:8px 0 0; white-space:pre-wrap; max-height:240px; overflow:auto; }
+    .hidden { display:none; }
+    @media (max-width:640px) { main{margin:24px auto} form{flex-wrap:wrap} input{flex-basis:100%} button{flex:1} }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Tra cứu pháp luật giao thông</h1>
+      <div class="subtitle">Câu trả lời được tạo từ các đoạn văn bản đã truy xuất và hiển thị nguồn để đối chiếu.</div>
+    </header>
+    <form id="search-form">
+      <input id="query" required minlength="2" maxlength="2000" autocomplete="off" placeholder="Ví dụ: Quy định về tốc độ tối đa của xe máy?">
+      <button id="search-button" type="submit">Tra cứu</button>
+      <button id="clear-button" class="secondary" type="button">Xóa phiên</button>
+    </form>
+    <div id="status" role="status"></div>
+    <article id="answer-card" class="hidden">
+      <h2>Trả lời</h2>
+      <div id="answer"></div>
+      <p id="disclaimer" class="notice"></p>
+    </article>
+    <article id="sources-card" class="hidden">
+      <h2>Nguồn truy xuất</h2>
+      <div id="sources"></div>
+    </article>
+  </main>
+  <script>
+    const form = document.querySelector('#search-form');
+    const queryInput = document.querySelector('#query');
+    const searchButton = document.querySelector('#search-button');
+    const statusBox = document.querySelector('#status');
+    const answerCard = document.querySelector('#answer-card');
+    const sourcesCard = document.querySelector('#sources-card');
+    const answerBox = document.querySelector('#answer');
+    const disclaimerBox = document.querySelector('#disclaimer');
+    const sourcesBox = document.querySelector('#sources');
+    let sessionId = localStorage.getItem('rag-traffic-session') || crypto.randomUUID();
+    localStorage.setItem('rag-traffic-session', sessionId);
+
+    function setBusy(busy) {
+      searchButton.disabled = busy;
+      queryInput.disabled = busy;
+      statusBox.textContent = busy ? 'Đang truy xuất tài liệu…' : '';
+    }
+
+    function renderSources(results) {
+      sourcesBox.replaceChildren();
+      for (const result of results) {
+        const item = document.createElement('section');
+        item.className = 'source';
+        const heading = document.createElement('strong');
+        heading.textContent = `[${result.rank}] ${result.article || result.document_id}`;
+        const score = document.createElement('span');
+        score.className = 'score';
+        score.textContent = `score ${result.score}`;
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+        meta.textContent = `${result.title} · ${result.source_file}`;
+        const content = document.createElement('p');
+        content.className = 'content';
+        content.textContent = result.content;
+        item.append(heading, score, meta, content);
+        sourcesBox.append(item);
+      }
+      sourcesCard.classList.toggle('hidden', results.length === 0);
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const query = queryInput.value.trim();
+      if (!query) return;
+      setBusy(true);
+      answerCard.classList.add('hidden');
+      sourcesCard.classList.add('hidden');
+      try {
+        const response = await fetch('/search', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({query, session_id: sessionId})
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
+        sessionId = data.session_id;
+        localStorage.setItem('rag-traffic-session', sessionId);
+        answerBox.textContent = data.answer;
+        disclaimerBox.textContent = data.disclaimer;
+        answerCard.classList.remove('hidden');
+        renderSources(data.results || []);
+        statusBox.textContent = data.mode === 'rag' ? 'Đã tổng hợp bằng RAG.' : 'Chế độ chỉ hiển thị bằng chứng.';
+      } catch (error) {
+        statusBox.textContent = `Không thể tra cứu: ${error.message}`;
+      } finally {
+        setBusy(false);
+      }
+    });
+
+    document.querySelector('#clear-button').addEventListener('click', async () => {
+      try {
+        await fetch('/clear_history', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({session_id:sessionId})
+        });
+      } finally {
+        sessionId = crypto.randomUUID();
+        localStorage.setItem('rag-traffic-session', sessionId);
+        answerCard.classList.add('hidden');
+        sourcesCard.classList.add('hidden');
+        statusBox.textContent = 'Đã tạo phiên mới.';
+        queryInput.focus();
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,23 +1,22 @@
-# Các thư viện xử lý tài liệu
-python-docx==0.8.11
-pdfminer.six==20221105
-pytesseract==0.3.10
-pdf2image==1.16.3
-Pillow==9.5.0
+# Runtime. Install the CPU build of PyTorch first as shown in README/Makefile,
+# otherwise a default Linux resolver may download unnecessary CUDA packages.
+fastapi>=0.135,<1
+uvicorn>=0.35,<1
+pydantic>=2.11,<3
+python-dotenv>=1.1,<2
+httpx>=0.28,<1
 
-# Các thư viện cho vector embedding và retrieval
-# Đã loại bỏ sentence-transformers để tránh xung đột với huggingface-hub
-transformers>=4.31.0,<4.38.0
-huggingface-hub>=0.16.4
-faiss-cpu==1.7.4
-numpy==1.24.3
-torch==2.0.1
+# Document extraction
+python-docx>=1.2,<2
+pdfminer.six>=20250506
+pytesseract>=0.3.13,<1
+pdf2image>=1.17,<2
+Pillow>=11,<13
 
-# Các thư viện cho LLM và API
-fastapi==0.95.2
-uvicorn==0.22.0
-pydantic==1.10.8
+# Embeddings and exact cosine search
+sentence-transformers>=6,<7
+faiss-cpu>=1.14,<2
+numpy>=2.2,<3
 
-# Các thư viện hỗ trợ
-tqdm==4.65.0
-tokenizers>=0.13.3 
+# Test runner
+pytest>=8.4,<10
